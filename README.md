@@ -45,10 +45,12 @@ NLP/
    ```
 
 3. **Download NLTK data** (if not already installed):
-   ```python
+   ```python3
    import nltk
    nltk.download('punkt')
+   nltk.download('punkt_tab')
    nltk.download('averaged_perceptron_tagger')
+   nltk.download('averaged_perceptron_tagger_eng')
    nltk.download('wordnet')
    nltk.download('wordnet_ic')
    nltk.download('brown')
@@ -56,7 +58,7 @@ NLP/
 
 4. **Download the STS dataset**:
    ```bash
-   python download_sts_dataset.py
+   python3 download_sts_dataset.py
    ```
 
 ## 🎯 Usage
@@ -64,7 +66,7 @@ NLP/
 ### Basic Usage (Traditional Features + Neural Network)
 
 ```bash
-python sts_similarity_modular.py
+python3 sts_similarity_modular.py
 ```
 
 This runs the complete experiment with:
@@ -75,7 +77,7 @@ This runs the complete experiment with:
 ### Advanced Usage (with BERT)
 
 ```bash
-python sts_similarity_modular.py --use-bert
+python3 sts_similarity_modular.py --use-bert
 ```
 
 This enables BERT embeddings for potentially better performance (but slower execution).
@@ -85,13 +87,13 @@ This enables BERT embeddings for potentially better performance (but slower exec
 Test sentence pairs interactively:
 
 ```bash
-python sts_similarity_modular.py --interactive
+python3 sts_similarity_modular.py --interactive
 ```
 
 ### Disable Neural Network
 
 ```bash
-python sts_similarity_modular.py --no-neural
+python3 sts_similarity_modular.py --no-neural
 ```
 
 ## 📊 Features Overview

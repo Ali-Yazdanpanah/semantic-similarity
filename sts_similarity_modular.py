@@ -27,7 +27,8 @@ from evaluation.metrics import STSEvaluator
 from sklearn.svm import SVR
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.impute import SimpleImputer
 
 
 class ModularSTSSystem:
@@ -53,6 +54,7 @@ class ModularSTSSystem:
         # Initialize models
         self.models = {}
         self.scalers = {}
+        self.imputers = {}
         
         if use_bert:
             print("Initializing BERT feature extractor...")
@@ -112,10 +114,15 @@ class ModularSTSSystem:
         """Train traditional ML models."""
         print("Training traditional ML models...")
         
-        # Scale features
-        scaler = StandardScaler()
-        train_features_scaled = scaler.fit_transform(train_features)
-        dev_features_scaled = scaler.transform(dev_features)
+        # Handle NaN values
+        imputer = SimpleImputer(strategy='mean')
+        train_features_imputed = imputer.fit_transform(train_features)
+        dev_features_imputed = imputer.transform(dev_features)
+        
+        # Scale features - use RobustScaler to handle outliers and prevent NaN
+        scaler = RobustScaler()
+        train_features_scaled = scaler.fit_transform(train_features_imputed)
+        dev_features_scaled = scaler.transform(dev_features_imputed)
         
         # Train different models
         models_to_train = {
@@ -141,9 +148,10 @@ class ModularSTSSystem:
             print(f"    Training time: {time.time() - start_time:.2f}s")
             print(f"    Dev Pearson: {dev_metrics['pearson']:.4f}")
             
-            # Store model and scaler
+            # Store model, scaler, and imputer
             self.models[model_name] = model
             self.scalers[model_name] = scaler
+            self.imputers[model_name] = imputer
     
     def train_neural_model(self, train_features: np.ndarray, 
                           train_scores: List[float],
@@ -175,8 +183,12 @@ class ModularSTSSystem:
         predictions = {}
         
         for model_name, model in self.models.items():
+            imputer = self.imputers[model_name]
             scaler = self.scalers[model_name]
-            features_scaled = scaler.transform(features)
+            
+            # Apply imputation and scaling
+            features_imputed = imputer.transform(features)
+            features_scaled = scaler.transform(features_imputed)
             predictions[model_name] = model.predict(features_scaled)
         
         return predictions
@@ -251,6 +263,46 @@ class ModularSTSSystem:
         print("="*50)
         print("Enter sentence pairs to get similarity scores (type 'quit' to exit)")
         
+        # Check if models are trained, if not, train them first
+        if not self.models:
+            print("Models not trained yet. Training models first...")
+            try:
+                # Load data and train models
+                datasets = self.load_data()
+                
+                if 'train' not in datasets or 'dev' not in datasets:
+                    print("Error: Training and development sets are required for interactive mode!")
+                    return
+                
+                # Extract features for training
+                train_sentences1, train_sentences2, train_scores = datasets['train']
+                dev_sentences1, dev_sentences2, dev_scores = datasets['dev']
+                
+                # Preprocess sentences
+                train_sentences1, train_sentences2 = self.preprocess_sentences(train_sentences1, train_sentences2)
+                dev_sentences1, dev_sentences2 = self.preprocess_sentences(dev_sentences1, dev_sentences2)
+                
+                if self.use_bert:
+                    print("Using BERT features...")
+                    train_features = self.extract_bert_features(train_sentences1, train_sentences2)
+                    dev_features = self.extract_bert_features(dev_sentences1, dev_sentences2)
+                else:
+                    print("Using traditional features...")
+                    train_features = self.extract_traditional_features(train_sentences1, train_sentences2)
+                    dev_features = self.extract_traditional_features(dev_sentences1, dev_sentences2)
+                
+                # Train models
+                self.train_traditional_models(train_features, train_scores, dev_features, dev_scores)
+                
+                if self.use_neural:
+                    self.train_neural_model(train_features, train_scores, dev_features, dev_scores)
+                
+                print("Models trained successfully!")
+                
+            except Exception as e:
+                print(f"Error training models: {e}")
+                return
+        
         while True:
             print("\n" + "-"*30)
             sentence1 = input("Enter first sentence: ").strip()
@@ -274,8 +326,7 @@ class ModularSTSSystem:
                 features = self.feature_extractor.extract_all_features(
                     preprocessed_s1[0], preprocessed_s2[0], self.data_loader.word_counts
                 )
-                features = features.reshape(1, -1)
-                
+                features = np.array(features).reshape(1, -1)
                 trad_predictions = self.predict_with_traditional_models(features)
                 for model_name, pred in trad_predictions.items():
                     predictions[model_name] = pred[0]
@@ -295,8 +346,11 @@ class ModularSTSSystem:
             
             # Print results
             print(f"\nSimilarity Scores:")
-            for model_name, score in predictions.items():
-                print(f"  {model_name}: {score:.3f}")
+            if predictions:
+                for model_name, score in predictions.items():
+                    print(f"  {model_name}: {score:.3f}")
+            else:
+                print("  No predictions available. Make sure models are trained.")
     
     def run_full_experiment(self):
         """Run the complete STS experiment."""

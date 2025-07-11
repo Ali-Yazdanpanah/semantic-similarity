@@ -10,7 +10,8 @@ from typing import List, Dict, Optional
 
 # NLTK imports
 import nltk
-from nltk.tokenize import word_tokenize, pos_tag
+from nltk.tokenize import word_tokenize
+from nltk.tag import pos_tag
 from nltk.corpus import wordnet as wn, wordnet_ic
 
 # Gensim imports
@@ -73,7 +74,8 @@ class SimilarityFeatures:
             return 0.0
         
         sm = difflib.SequenceMatcher(None, embedding1, embedding2)
-        return sm.ratio() * 5
+        similarity = sm.ratio() * 5
+        return similarity
     
     def word_alignment_similarity(self, s1: str, s2: str) -> float:
         """
@@ -180,7 +182,11 @@ class SimilarityFeatures:
             similarities = []
             for ss in synsets2:
                 try:
-                    similarities.append(synset.res_similarity(ss, self.brown_ic))
+                    resnik_score = synset.res_similarity(ss, self.brown_ic)
+                    # Clip extremely large values from Resnik similarity
+                    if resnik_score > 20.0:  # Reasonable upper bound for Resnik similarity
+                        resnik_score = 20.0
+                    similarities.append(resnik_score)
                 except:
                     continue
             if similarities:
@@ -188,7 +194,10 @@ class SimilarityFeatures:
                 score += best_score
                 count += 1
         
-        return score / count if count > 0 else 0.0
+        result = score / count if count > 0 else 0.0
+        # Normalize to 0-5 range (Resnik similarity can be very large)
+        normalized_result = min(result / 4.0, 5.0)  # Divide by 4 to get 0-5 range
+        return normalized_result
     
     def unigram_overlap(self, s1: str, s2: str) -> float:
         """
@@ -208,7 +217,8 @@ class SimilarityFeatures:
         for word1 in words1:
             overlap_count += words2.count(word1)
         
-        return 2 * overlap_count / (len(words1) + len(words2) + 0.0)
+        total_words = len(words1) + len(words2)
+        return 2 * overlap_count / total_words if total_words > 0 else 0.0
     
     def absolute_difference_features(self, s1: str, s2: str) -> List[float]:
         """
@@ -226,8 +236,9 @@ class SimilarityFeatures:
         
         features = []
         
-        # All tokens
-        t1 = abs(len(tokens1) - len(tokens2)) / float(len(tokens1) + len(tokens2))
+        # All tokens - handle division by zero
+        total_tokens = len(tokens1) + len(tokens2)
+        t1 = abs(len(tokens1) - len(tokens2)) / total_tokens if total_tokens > 0 else 0.0
         features.append(t1)
         
         # Adjectives
@@ -321,12 +332,13 @@ class SimilarityFeatures:
         Returns:
             List of all features
         """
-        features = [
-            self.simple_baseline_similarity(s1, s2, word_counts),
-            self.word_alignment_similarity(s1, s2),
-            self.information_content_similarity(s1, s2),
-            self.unigram_overlap(s1, s2)
-        ]
+        # Extract individual features
+        f1 = self.simple_baseline_similarity(s1, s2, word_counts)
+        f2 = self.word_alignment_similarity(s1, s2)
+        f3 = self.information_content_similarity(s1, s2)
+        f4 = self.unigram_overlap(s1, s2)
+        
+        features = [f1, f2, f3, f4]
         
         # Add absolute difference features
         features.extend(self.absolute_difference_features(s1, s2))
@@ -334,4 +346,16 @@ class SimilarityFeatures:
         # Add min-max ratio features
         features.extend(self.min_max_ratio_features(s1, s2))
         
-        return features 
+        # Replace any NaN values with 0.0 and clip extreme values
+        cleaned_features = []
+        for f in features:
+            if np.isnan(f):
+                cleaned_features.append(0.0)
+            elif np.isinf(f):
+                cleaned_features.append(0.0)
+            elif abs(f) > 1000:  # More reasonable threshold
+                cleaned_features.append(np.clip(f, -1000, 1000))
+            else:
+                cleaned_features.append(f)
+        
+        return cleaned_features 

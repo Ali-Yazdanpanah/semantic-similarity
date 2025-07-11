@@ -45,12 +45,20 @@ class STSDatasetLoader:
                     continue
                 
                 parts = line.split('\t')
-                if len(parts) != 3:
-                    print(f"Warning: Skipping line {line_num} with insufficient fields (found {len(parts)}, need 3)")
+                if len(parts) < 3:
+                    print(f"Warning: Skipping line {line_num} with insufficient fields (found {len(parts)}, need at least 3)")
                     continue
                 
                 try:
-                    s1, s2, score = parts
+                    # Handle both 3-column (s1, s2, score) and 4-column (index, s1, s2, score) formats
+                    if len(parts) == 3:
+                        s1, s2, score = parts
+                    elif len(parts) == 4:
+                        _, s1, s2, score = parts  # Skip index column
+                    else:
+                        print(f"Warning: Skipping line {line_num} with unexpected format (found {len(parts)} columns)")
+                        continue
+                    
                     score = float(score)
                     sentences1.append(s1)
                     sentences2.append(s2)
